@@ -203,8 +203,8 @@ def render(video_path, template_name, output_path, srt_path=None, max_segments=6
     if n_segs > 0:
         vsplit_labels = "".join(f"[vin{i}]" for i in range(n_segs))
         asplit_labels = "".join(f"[ain{i}]" for i in range(n_segs))
-        filter_parts.append(f"[0:v]split={n_segs}{vsplit_labels}")
-        filter_parts.append(f"[0:a]asplit={n_segs}{asplit_labels}")
+        filter_parts.append(f"[0:v:0]split={n_segs}{vsplit_labels}")
+        filter_parts.append(f"[0:a:0]asplit={n_segs}{asplit_labels}")
 
     for i, (start, end, speed, effect) in enumerate(segments):
         v_label = f"v{i}"
