@@ -195,16 +195,23 @@ def render(video_path, template_name, output_path, srt_path=None, max_segments=6
     seg_a_labels = []
     seg_durations = []  # output duration of each segment, post speed-change
 
+    n_segs = len(segments)
+    # Explicitly split the input streams into one labelled copy per segment.
+    # ffmpeg allows an input stream to feed multiple filters implicitly on
+    # most sources, but some containers (notably iPhone .mov) reject it with
+    # a filter-graph error. Splitting up front is the robust fix.
+    if n_segs > 0:
+        vsplit_labels = "".join(f"[vin{i}]" for i in range(n_segs))
+        asplit_labels = "".join(f"[ain{i}]" for i in range(n_segs))
+        filter_parts.append(f"[0:v]split={n_segs}{vsplit_labels}")
+        filter_parts.append(f"[0:a]asplit={n_segs}{asplit_labels}")
+
     for i, (start, end, speed, effect) in enumerate(segments):
         v_label = f"v{i}"
         a_label = f"a{i}"
         orient_stage = f",{orientation_filter}" if orientation_filter else ""
         out_duration = (end - start) / speed
 
-        # Ken Burns: only on normal-speed segments (slomo/fastmo already
-        # have visual movement from the speed change itself) and only
-        # when the segment is long enough for a zoom to read as intentional
-        # rather than a jitter.
         zoom_stage = ""
         if use_ken_burns and effect == "normal" and out_duration >= 0.6:
             total_frames = max(1, int(out_duration * src_fps))
@@ -219,17 +226,15 @@ def render(video_path, template_name, output_path, srt_path=None, max_segments=6
             shot_crop = build_shot_crop(shot_assignments[i], src_width, src_height,
                                         subject_x, 0.42)
             if shot_crop:
-                # Crop to the shot size, then scale back to a common size so
-                # every segment matches before they're joined together.
                 shot_stage = f",{shot_crop},scale={src_width}:{src_height}:flags=lanczos"
 
         filter_parts.append(
-            f"[0:v]trim=start={start:.3f}:end={end:.3f},setpts=PTS-STARTPTS{orient_stage}{shot_stage},"
+            f"[vin{i}]trim=start={start:.3f}:end={end:.3f},setpts=PTS-STARTPTS{orient_stage}{shot_stage},"
             f"setpts={1/speed:.4f}*PTS{zoom_stage},fps={src_fps}[{v_label}]"
         )
         atempo = _atempo_chain(speed)
         filter_parts.append(
-            f"[0:a]atrim=start={start:.3f}:end={end:.3f},asetpts=PTS-STARTPTS,"
+            f"[ain{i}]atrim=start={start:.3f}:end={end:.3f},asetpts=PTS-STARTPTS,"
             f"{atempo}[{a_label}]"
         )
         seg_v_labels.append(v_label)
